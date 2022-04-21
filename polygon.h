@@ -23,6 +23,17 @@ struct Triangle {
         b = B;
         c = C;
     }
+
+    Triangle(const Triangle &t) {
+        *this = t;
+    }
+
+    Triangle& operator = (const Triangle &t) {
+        a = t.a;
+        b = t.b;
+        c = t.c;
+        return *this;
+    }
 };
 
 static int sign (QPoint p1, QPoint p2, QPoint p3) {
@@ -47,6 +58,8 @@ class Polygon
 {
 public:
     Polygon();
+    Polygon(const Polygon &gon);
+    Polygon& operator = (const Polygon &gon);
     list <Triangle> getTris();
     vector <QPoint> getPts();
     void setEdgeSize(int size);
@@ -55,6 +68,25 @@ public:
     void setEdgeColor(QRgb qc);
     QRgb getPolyColor();
     QRgb getEdgeColor();
+    void removePt(int index);
+    void addPt(QPoint qp, int index = -1);
+    void movePt(QPoint loc, size_t index);
+    void translate(QPoint qp);
+    void scale(QPoint qp);
+    void rotate(QPoint qp);
+    void cleanup();
+    int inPoly(QPoint qp);
+    QPoint getCenter();
+    void setRPt1(QPoint qp);
+    void setRPt2(QPoint qp);
+    void makeBackup();
+
+   /*
+    * filter
+    * filter strength
+    * mode
+    * transparency
+    */
 
 private:
     void triangulate();
@@ -63,6 +95,7 @@ private:
     vector <QPoint> pts, backup;
     int edgeSize;
     QRgb pColor, eColor;
+    QPoint rPt1, rPt2;
 
 };
 

@@ -12,78 +12,15 @@ MainWindow::MainWindow(QWidget *parent)
     dragDraw = 0;
     qi = QImage(1700, 1000, QImage::Format_ARGB32_Premultiplied);
     qi.fill(0xFFFFFFFF);
+    triSegFlag = false;
     top = bottom = 0xFF000000;
     dispDivs = 0;
-    edgeSize = 4;
     shiftFlag = false;
     ctrlFlag = false;
+    gons.push_back(Polygon());
     timer = new QTimer(this);
     connect(timer, SIGNAL(timeout()), this, SLOT(flashCPts()));
     timer->start(1000);
-}
-
-void MainWindow::triangulate() {
-    long long l = getTime();
-    vector <QPoint> pts2 = pts;
-    vector <QPoint> processed;
-    int isCCW = -1;
-    int ccw = 0, cw = 0;
-    for (int i = 0; i < pts2.size(); ++i) {
-        int i1 = (i + 1) % pts2.size();
-        int i2 = (i + 2) % pts2.size();
-        int d = det(pts2[i], pts2[i1], pts2[i2]);
-        if (d < 0)
-            ++ccw;
-        else if (d > 0)
-            ++cw;
-    }
-    isCCW = ccw > cw ? 1 : 0;
-    tris.clear();
-    while (pts2.size() >= 3) {
-        int size = tris.size();
-        for (int i = 0; i < pts2.size(); ++i) {
-            int flag = 1;
-            int i1 = (i + 1) % pts2.size();
-            int i2 = (i + 2) % pts2.size();
-            if ((det(pts2[i], pts2[i1], pts2[i2]) < 0 && isCCW) || (det(pts2[i], pts2[i1], pts2[i2]) > 0 && !isCCW)) {
-                if (i2 < i) {
-                    for (int j = i2 + 1; j < i; ++j)
-                        if (inTri(pts2[j], pts2[i], pts2[i1], pts2[i2])) {
-                            flag = 0;
-                            break;
-                        }
-                }
-                else {
-                    for (int j = 0; j < i; ++j)
-                        if (inTri(pts2[j], pts2[i], pts2[i1], pts2[i2])) {
-                            flag = 0;
-                            break;
-                        }
-                    if (flag)
-                        for (int j = i2 + 1; j < pts2.size(); ++j)
-                            if (inTri(pts2[j], pts2[i], pts2[i1], pts2[i2])) {
-                                flag = 0;
-                                break;
-                            }
-                }
-                if (flag)
-                    for (QPoint qp : processed)
-                        if (inTri(qp, pts2[i], pts2[i1], pts2[i2])) {
-                            flag = 0;
-                            break;
-                        }
-                if (flag) {
-                    tris.push_back(Triangle(pts2[i], pts2[i1], pts2[i2]));
-                    processed.push_back(pts2[i1]);
-                    pts2.erase(pts2.begin() + i1);
-                    break;
-                }
-            }
-        }
-        if (tris.size() == size)
-            break;
-    }
-    //cout << getTime(l) << endl;
 }
 
 void MainWindow::calcTri(Triangle t) {
@@ -173,42 +110,26 @@ void MainWindow::fillTTri(QPoint a, QPoint b, QPoint c) {
 void MainWindow::mouseMoveEvent(QMouseEvent *event) {
     QPoint qp = event->pos();
     if (lastButton == Qt::LeftButton) {
-        if (shiftFlag) {
-            QPoint change = qp - rPt1;
-            for (int i = 0; i < pts.size(); ++i)
-                pts[i] += change;
-            rPt1 = qp;
+        if (shiftFlag)
+            for (int activeGon : activeGons)
+                gons[activeGon].translate(qp);
+        else if (ctrlFlag)
+            for (int activeGon : activeGons)
+                gons[activeGon].scale(qp);
+        else if (activeGons.size() == 1) {
+            if (activePt != -1)
+                gons[activeGons[0]].movePt(qp, activePt);
+            else if (dragDraw)
+                gons[activeGons[0]].addPt(qp);
         }
-        else if (ctrlFlag) {
-            pts = backup;
-            for (int i = 0; i < pts.size(); ++i)
-                pts[i] -= rPt1;
-            if (rPt2.x() == 0 || rPt2.y() == 0)
-                return;
-            float xChange = static_cast<float>(qp.x()) / static_cast<float>(rPt2.x());
-            float yChange = static_cast<float>(qp.y()) / static_cast<float>(rPt2.y());
-            for (int i = 0; i < pts.size(); ++i)
-                pts[i] = QPoint(static_cast<float>(pts[i].x()) * xChange, static_cast<float>(pts[i].y()) * yChange) + rPt1;
-        }
-        else if (activePt != -1)
-            pts[activePt] = qp;
-        else if (dragDraw)
-            pts.push_back(qp);
     }
     else if (lastButton == Qt::RightButton) {
-        if (shiftFlag) {
-            pts = backup;
-            float angle = -(atan2(rPt2.y() - rPt1.y(), rPt2.x() - rPt1.x()) - atan2(qp.y() - rPt1.y(), qp.x() - rPt1.x()));
-            float s = sin(angle);
-            float c = cos(angle);
-            for (int i = 0; i < pts.size(); ++i) {
-                pts[i] -= rPt1;
-                pts[i] = QPoint(pts[i].x() * c - pts[i].y() * s, pts[i].x() * s + pts[i].y() * c);
-                pts[i] += rPt1;
-            }
-        }
-        else {
+        if (shiftFlag)
+            for (int activeGon : activeGons)
+                gons[activeGon].rotate(qp);
+        else if (activeGons.size() == 1) {
             int dist = (3 * ptSize) / 2;
+            vector <QPoint> pts = gons[activeGons[0]].getPts();
             for (int i = 0; i < pts.size(); ++i) {
                 QPoint pt = pts[i];
                 if (abs(pt.x() - qp.x()) <= dist && abs(pt.y() - qp.y()) < dist) {
@@ -217,73 +138,120 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event) {
                 }
             }
             if (activePt != -1) {
-                pts.erase(pts.begin() + activePt);
+                gons[activeGons[0]].removePt(activePt);
                 activePt = -1;
+                if (pts.size() - 1 == 0) {
+                    gons.erase(gons.begin() + activeGons[0]);
+                    activeGons.clear();
+                }
             }
         }
     }
-    triangulate();
     repaint();
+}
+
+void MainWindow::mouseDoubleClickEvent(QMouseEvent *event) {
+    if (event->button() == Qt::RightButton) {
+        int index = -1;
+        if (activeGons.size() == 1 && gons[activeGons[0]].getPts().size() < 3)
+            return;
+        for (int i = 0; i < gons.size(); ++i)
+            if (gons[i].inPoly(event->pos())) {
+                index = i;
+                break;
+            }
+        if (index != -1) {
+            int index2 = -1;
+            for (int i = 0; i < activeGons.size(); ++i)
+                if (activeGons[i] == index) {
+                    index2 = i;
+                    break;
+                }
+            if (index2 == -1)
+                activeGons.push_back(index);
+            else
+                activeGons.erase(activeGons.begin() + index2);
+        }
+        else
+            activeGons.clear();
+    }
 }
 
 void MainWindow::mousePressEvent(QMouseEvent *event) {
     QPoint qp = event->pos();
     int dist = (3 * ptSize) / 2;
     lastButton = event->button();
-    for (int i = 0; i < pts.size(); ++i) {
-        QPoint pt = pts[i];
-        if (abs(pt.x() - qp.x()) <= dist && abs(pt.y() - qp.y()) < dist) {
-            activePt = i;
-            break;
+    if (activeGons.size() == 1) {
+        vector <QPoint> pts = gons[activeGons[0]].getPts();
+        for (int i = 0; i < pts.size(); ++i) {
+            QPoint pt = pts[i];
+            if (abs(pt.x() - qp.x()) <= dist && abs(pt.y() - qp.y()) < dist) {
+                activePt = i;
+                break;
+            }
         }
+    }
+    else if (activeGons.size() == 0) {
+        activeGons.push_back(gons.size());
+        gons.push_back(Polygon());
     }
     if (lastButton == Qt::LeftButton) {
         if (shiftFlag)
-            rPt1 = qp;
-        else if (ctrlFlag && pts.size() > 0) {
-            rPt1 = pts[0];
-            for (QPoint pt : pts) {
-                if (pt.x() < rPt1.x())
-                    rPt1.setX(pt.x());
-                else if (pt.y() < rPt1.y())
-                    rPt1.setY(pt.y());
+            for (int activeGon : activeGons)
+                gons[activeGon].setRPt1(qp);
+        else if (ctrlFlag && activeGons.size() >= 1) {
+            QPoint corner = gons[activeGons[0]].getPts()[0];
+            for (int activeGon : activeGons) {
+                for (QPoint pt : gons[activeGon].getPts()) {
+                    if (pt.x() < corner.x())
+                        corner.setX(pt.x());
+                    if (pt.y() < corner.y())
+                        corner.setY(pt.y());
+                }
             }
-            rPt2 = qp;
-            backup = pts;
+            for (int activeGon : activeGons) {
+                gons[activeGon].setRPt2(qp);
+                gons[activeGon].setRPt1(corner);
+                gons[activeGon].makeBackup();
+            }
         }
         else {
-            if (activePt == -1) {
+            if (activePt == -1 && activeGons.size() == 1) {
                 if (!dragDraw)
-                    activePt = static_cast<int>(pts.size());
-                pts.push_back(qp);
+                    activePt = gons[activeGons[0]].getPts().size();
+                gons[activeGons[0]].addPt(qp);
             }
             lastButton = Qt::LeftButton;
         }
     }
     else if (lastButton == Qt::RightButton) {
         if (shiftFlag) {
-            int x = 0, y = 0;
-            for (QPoint pt : pts) {
-                x += pt.x();
-                y += pt.y();
+            QPoint center(0, 0);
+            for (int activeGon : activeGons) {
+                center += gons[activeGon].getCenter();
+                gons[activeGon].makeBackup();
+                gons[activeGon].setRPt2(qp);
             }
-            x /= pts.size();
-            y /= pts.size();
-            backup = pts;
-            rPt1 = QPoint(x, y);
-            rPt2 = qp;
+            center = QPoint(center.x() / activeGons.size(), center.y() / activeGons.size());
+            for (int activeGon : activeGons)
+                gons[activeGon].setRPt1(center);
         }
-        else if (activePt != -1) {
-            pts.erase(pts.begin() + activePt);
+        else if (activePt != -1 && activeGons.size() == 1) {
+            gons[activeGons[0]].removePt(activePt);
             activePt = -1;
+            if (gons[activeGons[0]].getPts().size() == 0) {
+                gons.erase(gons.begin() + activeGons[0]);
+                activeGons.clear();
+            }
         }
     }
-    triangulate();
     repaint();
 }
 
 void MainWindow::mouseReleaseEvent(QMouseEvent *event) {
     activePt = -1;
+    for (int activeGon : activeGons)
+        gons[activeGon].cleanup();
     repaint();
 }
 
@@ -293,16 +261,14 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         dragDraw = !dragDraw;
         break;
     case Qt::Key_0:
-        tris.clear();
-        pts.clear();
+        gons.clear();
         break;
     case Qt::Key_1:
-        if (top == 0xFF222222) {
+        triSegFlag = !triSegFlag;
+        if (triSegFlag) {
             top = 0xFFFF0000;
             bottom = 0xFF00FF00;
         }
-        else
-            top = bottom = 0xFF222222;
         break;
     case Qt::Key_2:
         dispDivs = !dispDivs;
@@ -316,12 +282,20 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
             ctrlFlag = true;
         break;
     case Qt::Key_Left:
-        if (edgeSize > 0)
-            --edgeSize;
+        for (int activeGon : activeGons)
+            gons[activeGon].setEdgeSize(gons[activeGon].getEdgeSize() - 1);
         break;
     case Qt::Key_Right:
-        if (edgeSize < 100)
-            ++edgeSize;
+        for (int activeGon : activeGons)
+            gons[activeGon].setEdgeSize(gons[activeGon].getEdgeSize() + 1);
+        break;
+    case Qt::Key_Up:
+        if (activeGons.size() == 1)
+            gons[activeGons[0]].setPolyColor(QColorDialog::getColor(gons[activeGons[0]].getPolyColor(), this).rgba());
+        break;
+    case Qt::Key_Down:
+        if (activeGons.size() == 1)
+            gons[activeGons[0]].setEdgeColor(QColorDialog::getColor(gons[activeGons[0]].getEdgeColor(), this).rgba());
         break;
     }
     repaint();
@@ -347,34 +321,44 @@ void MainWindow::paintEvent(QPaintEvent *event) {
     long long l = getTime();
     int w = qi.width(), h = qi.height();
     qi.fill(0xFFFFFFFF);
-    for (Triangle t : tris)
-        calcTri(t);
     QPainter qp(&qi);
-    qp.drawImage(0, 0, qi);
-    if (dispDivs) {
-        qp.setPen(QPen(QColor(128, 128, 128), 4, Qt::SolidLine, Qt::RoundCap));
-        for (Triangle t : tris) {
-            qp.drawLine(t.a, t.b);
-            qp.drawLine(t.a, t.c);
-            qp.drawLine(t.c, t.b);
+    for (Polygon gon : gons) {
+        list <Triangle> tris = gon.getTris();
+        vector <QPoint> pts = gon.getPts();
+        if (!triSegFlag)
+            bottom = top = gon.getPolyColor();
+        for (Triangle &t : tris)
+            calcTri(t);
+        if (dispDivs) {
+            qp.setPen(QPen(QColor(20, 20, 20), 4, Qt::SolidLine, Qt::RoundCap));
+            for (Triangle &t : tris) {
+                qp.drawLine(t.a, t.b);
+                qp.drawLine(t.a, t.c);
+                qp.drawLine(t.c, t.b);
+            }
         }
-    }
-    qp.setPen(QPen(QColor(128, 128, 128), edgeSize, Qt::SolidLine, Qt::RoundCap));
-    if (edgeSize != 0 && pts.size() >= 2) {
-        QVector <QLine> lines;
-        for (int i = 1; i < pts.size(); ++i)
-            lines.push_back(QLine(pts[i - 1], pts[i]));
-        lines.push_back(QLine(pts[0], pts[pts.size() - 1]));
-        qp.drawLines(lines);
-    }
-    for (QPoint qp : pts) {
-        for (int j = max(0, qp.y()); j <= min(qp.y(), h - 1); ++j) {
-            QRgb *line = reinterpret_cast<QRgb *>(qi.scanLine(j));
-            for (int i = max(qp.x() - ptSize, w - 1); i <= min(qp.x() + ptSize, w - 1); ++i) {
-                int dist = abs(i - qp.x()) + abs(j - qp.y());
-                if ((form || dist >= ptSize - 1) && dist <= ptSize) {
-                    QColor qc(line[i]);
-                    line[i] = QColor(255 - qc.red(), 255 - qc.green(), 255 - qc.blue()).rgba();
+        else {
+            int edgeSize = gon.getEdgeSize();
+            qp.setPen(QPen(QColor(gon.getEdgeColor()), edgeSize, Qt::SolidLine, Qt::RoundCap));
+            if (edgeSize != 0 && pts.size() >= 2) {
+                QVector <QLine> lines;
+                for (int i = 1; i < pts.size(); ++i)
+                    lines.push_back(QLine(pts[i - 1], pts[i]));
+                lines.push_back(QLine(pts[0], pts[pts.size() - 1]));
+                qp.drawLines(lines);
+            }
+        }
+        if (activeGons.size() == 1) {
+            for (QPoint pt : pts) {
+                for (int j = max(0, pt.y() - ptSize); j <= min(pt.y() + ptSize, h - 1); ++j) {
+                    QRgb *line = reinterpret_cast<QRgb *>(qi.scanLine(j));
+                    for (int i = max(pt.x() - ptSize, 0); i <= min(pt.x() + ptSize, w - 1); ++i) {
+                        int dist = abs(i - pt.x()) + abs(j - pt.y());
+                        if ((form || dist >= ptSize - 1) && dist <= ptSize) {
+                            QColor qc(line[i]);
+                            line[i] = QColor(255 - qc.red(), 255 - qc.green(), 255 - qc.blue()).rgba();
+                        }
+                    }
                 }
             }
         }

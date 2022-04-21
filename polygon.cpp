@@ -2,6 +2,21 @@
 
 Polygon::Polygon() {
     edgeSize = 0;
+    eColor = 0xFFAAAAAA;
+    pColor = 0xFF000000;
+}
+
+Polygon::Polygon(const Polygon &gon) {
+    *this = gon;
+}
+
+Polygon& Polygon::operator=(const Polygon &gon) {
+    tris = gon.tris;
+    pts = gon.pts;
+    edgeSize = gon.edgeSize;
+    pColor = gon.pColor;
+    eColor = gon.eColor;
+    return *this;
 }
 
 list <Triangle> Polygon::getTris() {
@@ -35,6 +50,93 @@ QRgb Polygon::getPolyColor() {
 
 QRgb Polygon::getEdgeColor() {
     return eColor;
+}
+
+void Polygon::removePt(int index) {
+    pts.erase(pts.begin() + index);
+    triangulate();
+}
+
+void Polygon::addPt(QPoint qp, int index) {
+    if (index == -1 || index + 1 == pts.size())
+        pts.push_back(qp);
+    else
+        pts.insert(pts.begin() + index + 1, qp);
+    triangulate();
+}
+
+void Polygon::movePt(QPoint loc, size_t index) {
+    pts[index] = loc;
+    triangulate();
+}
+
+void Polygon::translate(QPoint qp) {
+    QPoint change = qp - rPt1;
+    for (int i = 0; i < pts.size(); ++i)
+        pts[i] += change;
+    rPt1 = qp;
+    triangulate();
+}
+
+void Polygon::scale(QPoint qp) {
+    pts = backup;
+    for (int i = 0; i < pts.size(); ++i)
+        pts[i] -= rPt1;
+    if (rPt2.x() == 0 || rPt2.y() == 0)
+        return;
+    float xChange = static_cast<float>(qp.x()) / static_cast<float>(rPt2.x());
+    float yChange = static_cast<float>(qp.y()) / static_cast<float>(rPt2.y());
+    for (int i = 0; i < pts.size(); ++i)
+        pts[i] = QPoint(static_cast<float>(pts[i].x()) * xChange, static_cast<float>(pts[i].y()) * yChange) + rPt1;
+    triangulate();
+}
+
+void Polygon::rotate(QPoint qp) {
+    pts = backup;
+    float angle = -(atan2(rPt2.y() - rPt1.y(), rPt2.x() - rPt1.x()) - atan2(qp.y() - rPt1.y(), qp.x() - rPt1.x()));
+    float s = sin(angle);
+    float c = cos(angle);
+    for (int i = 0; i < pts.size(); ++i) {
+        pts[i] -= rPt1;
+        pts[i] = QPoint(pts[i].x() * c - pts[i].y() * s, pts[i].x() * s + pts[i].y() * c);
+        pts[i] += rPt1;
+    }
+    triangulate();
+}
+
+void Polygon::cleanup() {
+    backup.clear();
+}
+
+int Polygon::inPoly(QPoint qp) {
+    for (Triangle &t : tris)
+        if (inTri(qp, t.a, t.b, t.c))
+            return 1;
+    return 0;
+}
+
+QPoint Polygon::getCenter() {
+    int x = 0, y = 0;
+    for (QPoint pt : pts) {
+        x += pt.x();
+        y += pt.y();
+    }
+    x /= pts.size();
+    y /= pts.size();
+    rPt1 = rPt2 = QPoint(x, y);
+    return rPt1;
+}
+
+void Polygon::setRPt1(QPoint qp) {
+    rPt1 = qp;
+}
+
+void Polygon::setRPt2(QPoint qp) {
+    rPt2 = qp;
+}
+
+void Polygon::makeBackup() {
+    backup = pts;
 }
 
 void Polygon::triangulate() {

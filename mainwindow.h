@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QKeyEvent>
 #include <QTimer>
+#include <QColorDialog>
 #include <iostream>
 #include <vector>
 #include <list>
@@ -17,6 +18,9 @@ using std::chrono::high_resolution_clock;
 using std::chrono::milliseconds;
 using Qt::MouseButtons;
 using Qt::MouseButton;
+using std::find;
+using std::cout;
+using std::endl;
 
 const int len = 700;
 const int ptSize = 7;
@@ -42,26 +46,23 @@ public:
     void keyPressEvent(QKeyEvent *event);
     void keyReleaseEvent(QKeyEvent *event);
     void paintEvent(QPaintEvent *event);
-    void triangulate();
+    void mouseDoubleClickEvent(QMouseEvent *event);
     void calcTri(Triangle t);
     void fillBTri(QPoint a, QPoint b, QPoint c);
     void fillTTri(QPoint a, QPoint b, QPoint c);
 
-    list <Triangle> tris;
-    vector <QPoint> pts, backup;
     QImage qi;
     int activePt, form, dragDraw;
     MouseButton lastButton;
     QTimer *timer;
     QRgb top, bottom;
     int dispDivs;
-    bool shiftFlag, ctrlFlag;
-    QPoint rPt1, rPt2;
-    int edgeSize;
+    bool shiftFlag, ctrlFlag, triSegFlag;
 
 private:
     Ui::MainWindow *ui;
     vector <Polygon> gons;
+    vector <int> activeGons;
 
 public slots:
     void flashCPts();
