@@ -17,6 +17,8 @@ MainWindow::MainWindow(QWidget *parent)
     dispDivs = 0;
     shiftFlag = false;
     ctrlFlag = false;
+    altFlag = false;
+    cPt = QPoint(qi.width() / 2, qi.height() / 2);
     gons.push_back(Polygon());
     timer = new QTimer(this);
     connect(timer, SIGNAL(timeout()), this, SLOT(flashCPts()));
@@ -107,8 +109,32 @@ void MainWindow::fillTTri(QPoint a, QPoint b, QPoint c) {
     }
 }
 
+void MainWindow::createEllipse() {
+    int xrad = cPt.x() - 2;
+    int yrad = cPt.y() - 2;
+    gons.push_back(Polygon());
+    int index = gons.size() - 1;
+    for (float angle = 180.0; angle > -180.0; angle -= 1.0) {
+        float radAng = angle * 0.0174533;
+        float s = sin(radAng);
+        float c = cos(radAng);
+        QPoint qp = QPoint(xrad * c + xrad, yrad * s + yrad);
+        gons[index].addPt(qp);
+    }
+    activeGons.push_back(index);
+    while (gons[index].getPts().size() - 2 != gons[index].getTris().size())
+        gons[index].reducePts();
+    repaint();
+}
+
 void MainWindow::mouseMoveEvent(QMouseEvent *event) {
     QPoint qp = event->pos();
+    if (altFlag) {
+        if (qp.x() > 2 && qp.y() > 2)
+            cPt = qp;
+        repaint();
+        return;
+    }
     if (lastButton == Qt::LeftButton) {
         if (shiftFlag)
             for (int activeGon : activeGons)
@@ -175,10 +201,17 @@ void MainWindow::mouseDoubleClickEvent(QMouseEvent *event) {
         else
             activeGons.clear();
     }
+    repaint();
 }
 
 void MainWindow::mousePressEvent(QMouseEvent *event) {
     QPoint qp = event->pos();
+    if (altFlag) {
+        if (qp.x() > 2 && qp.y() > 2)
+            cPt = qp;
+        repaint();
+        return;
+    }
     int dist = (3 * ptSize) / 2;
     lastButton = event->button();
     if (activeGons.size() == 1) {
@@ -191,7 +224,7 @@ void MainWindow::mousePressEvent(QMouseEvent *event) {
             }
         }
     }
-    else if (activeGons.size() == 0) {
+    else if (activeGons.size() == 0 && lastButton == Qt::LeftButton) {
         activeGons.push_back(gons.size());
         gons.push_back(Polygon());
     }
@@ -215,13 +248,9 @@ void MainWindow::mousePressEvent(QMouseEvent *event) {
                 gons[activeGon].makeBackup();
             }
         }
-        else {
-            if (activePt == -1 && activeGons.size() == 1) {
-                if (!dragDraw)
-                    activePt = gons[activeGons[0]].getPts().size();
-                gons[activeGons[0]].addPt(qp);
-            }
+        else if (activeGons.size() == 1 && activePt == -1) {
             lastButton = Qt::LeftButton;
+            gons[activeGons[0]].addPt(qp);
         }
     }
     else if (lastButton == Qt::RightButton) {
@@ -262,6 +291,8 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         break;
     case Qt::Key_0:
         gons.clear();
+        activeGons.clear();
+        activePt = -1;
         break;
     case Qt::Key_1:
         triSegFlag = !triSegFlag;
@@ -297,6 +328,31 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         if (activeGons.size() == 1)
             gons[activeGons[0]].setEdgeColor(QColorDialog::getColor(gons[activeGons[0]].getEdgeColor(), this).rgba());
         break;
+    case Qt::Key_Minus:
+        if (activeGons.size() == 1)
+            gons[activeGons[0]].reducePts();
+        break;
+    case Qt::Key_Alt:
+        if (activeGons.size() == 0)
+            altFlag = true;
+        break;
+    case Qt::Key_C:
+        copyGons();
+        break;
+    case Qt::Key_V:
+        pasteGons();
+        break;
+    case Qt::Key_X:
+        copyGons();
+        deleteGons();
+        break;
+    case Qt::Key_Delete:
+    case Qt::Key_Backspace:
+        deleteGons();
+        break;
+    case Qt::Key_Period:
+        drawType = !drawType;
+        break;
     }
     repaint();
 }
@@ -309,7 +365,38 @@ void MainWindow::keyReleaseEvent(QKeyEvent *event) {
     case Qt::Key_Control:
         ctrlFlag = false;
         break;
+    case Qt::Key_Alt:
+        altFlag = false;
+        createEllipse();
     }
+}
+
+void MainWindow::copyGons() {
+    if (ctrlFlag) {
+        copy.clear();
+        for (int activeGon : activeGons)
+            copy.push_back(gons[activeGon]);
+    }
+}
+
+void MainWindow::pasteGons() {
+    if (ctrlFlag) {
+        activeGons.clear();
+        vector <int> newGons;
+        for (Polygon p : copy) {
+            newGons.push_back(gons.size());
+            gons.push_back(p);
+        }
+        activeGons = newGons;
+    }
+}
+
+void MainWindow::deleteGons() {
+    std::sort(activeGons.begin(), activeGons.end());
+    vector <int> gonNums = activeGons;
+    activeGons.clear();
+    for (int i = gonNums.size() - 1; i >= 0; --i)
+        gons.erase(gons.begin() + gonNums[i]);
 }
 
 void MainWindow::flashCPts() {
@@ -322,6 +409,7 @@ void MainWindow::paintEvent(QPaintEvent *event) {
     int w = qi.width(), h = qi.height();
     qi.fill(0xFFFFFFFF);
     QPainter qp(&qi);
+    int index = 0;
     for (Polygon gon : gons) {
         list <Triangle> tris = gon.getTris();
         vector <QPoint> pts = gon.getPts();
@@ -330,7 +418,17 @@ void MainWindow::paintEvent(QPaintEvent *event) {
         for (Triangle &t : tris)
             calcTri(t);
         if (dispDivs) {
-            qp.setPen(QPen(QColor(20, 20, 20), 4, Qt::SolidLine, Qt::RoundCap));
+            QColor lineColor;
+            int size;
+            if (top == bottom) {
+                lineColor = QColor(200, 200, 200);
+                size = 1;
+            }
+            else {
+                lineColor = QColor(20, 20, 20);
+                size = 2;
+            }
+            qp.setPen(QPen(lineColor, size, Qt::SolidLine, Qt::RoundCap));
             for (Triangle &t : tris) {
                 qp.drawLine(t.a, t.b);
                 qp.drawLine(t.a, t.c);
@@ -348,7 +446,7 @@ void MainWindow::paintEvent(QPaintEvent *event) {
                 qp.drawLines(lines);
             }
         }
-        if (activeGons.size() == 1) {
+        if (std::find(activeGons.begin(), activeGons.end(), index) != activeGons.end()) {
             for (QPoint pt : pts) {
                 for (int j = max(0, pt.y() - ptSize); j <= min(pt.y() + ptSize, h - 1); ++j) {
                     QRgb *line = reinterpret_cast<QRgb *>(qi.scanLine(j));
@@ -362,11 +460,16 @@ void MainWindow::paintEvent(QPaintEvent *event) {
                 }
             }
         }
+        ++index;
     }
     qp.end();
     qp.begin(this);
     qp.drawImage(0, 0, qi);
-    //cout << getTime(l) << endl;
+    if (altFlag) {
+        qp.setPen(QPen(QColor(128, 128, 128), 5));
+        qp.drawEllipse(cPt, cPt.x() - 2, cPt.y() - 2);
+    }
+    cout << getTime(l) << endl;
 }
 
 MainWindow::~MainWindow()

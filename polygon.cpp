@@ -192,13 +192,24 @@ void Polygon::triangulate() {
                     tris.push_back(Triangle(pts2[i], pts2[i1], pts2[i2]));
                     processed.push_back(pts2[i1]);
                     pts2.erase(pts2.begin() + i1);
-                    break;
+                    //break;
                 }
             }
         }
         if (tris.size() == size)
             break;
     }
+}
+
+void Polygon::reducePts() {
+    vector <QPoint> res;
+    for (int i = 0; i < pts.size(); i += 2) {
+        QPoint center = pts[i] + pts[(i + 1) % pts.size()];
+        res.push_back(QPoint(center.x() / 2, center.y() / 2));
+    }
+    if (res.size() >= 3)
+        pts = res;
+    triangulate();
 }
 
 

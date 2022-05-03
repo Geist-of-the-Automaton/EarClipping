@@ -47,22 +47,28 @@ public:
     void keyReleaseEvent(QKeyEvent *event);
     void paintEvent(QPaintEvent *event);
     void mouseDoubleClickEvent(QMouseEvent *event);
+
+private:
     void calcTri(Triangle t);
     void fillBTri(QPoint a, QPoint b, QPoint c);
     void fillTTri(QPoint a, QPoint b, QPoint c);
+    void drawQuad(int xc, int yc, int x, int y);
+    void createEllipse();
+    void copyGons();
+    void pasteGons();
+    void deleteGons();
 
+    Ui::MainWindow *ui;
+    vector <Polygon> gons, copy;
+    vector <int> activeGons;
     QImage qi;
     int activePt, form, dragDraw;
     MouseButton lastButton;
     QTimer *timer;
     QRgb top, bottom;
     int dispDivs;
-    bool shiftFlag, ctrlFlag, triSegFlag;
-
-private:
-    Ui::MainWindow *ui;
-    vector <Polygon> gons;
-    vector <int> activeGons;
+    bool shiftFlag, ctrlFlag, triSegFlag, altFlag;
+    QPoint cPt;
 
 public slots:
     void flashCPts();

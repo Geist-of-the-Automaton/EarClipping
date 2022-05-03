@@ -13,6 +13,7 @@ using std::min;
 using std::max;
 
 const int maxEdgeSize = 100;
+static bool drawType = false;
 
 
 struct Triangle {
@@ -80,6 +81,7 @@ public:
     void setRPt1(QPoint qp);
     void setRPt2(QPoint qp);
     void makeBackup();
+    void reducePts();
 
    /*
     * filter
